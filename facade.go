@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/youkale/echogy/logger"
+	"github.com/echogy-io/echogy/pkg/logger"
 	"net"
 	"net/http"
 	"strings"
@@ -36,7 +36,7 @@ func notFound(id string, conn net.Conn) {
 	conn.Close()
 }
 
-func handleConnection(c net.Conn, forward func(facadeId string, request *hijackConn) bool) {
+func handleConnection(c net.Conn, forward func(facadeId string, request *hijackHttp) bool) {
 	reader := newBufferedReader(c)
 	req, err := http.ReadRequest(bufio.NewReader(reader))
 	if err != nil {
@@ -61,12 +61,11 @@ func handleConnection(c net.Conn, forward func(facadeId string, request *hijackC
 	id := domainSep[0]
 
 	conn := newHijackConn(reader.toBufferedConn(c))
-	conn.AddRequest(req)
 
 	canForward := forward(id, conn)
 
 	if canForward {
-		logger.Debug("found forward", map[string]interface{}{
+		logger.Debug("found dispatchRemoteForward", map[string]interface{}{
 			"module":   "facade",
 			"method":   req.Method,
 			"accessId": id,
@@ -74,7 +73,7 @@ func handleConnection(c net.Conn, forward func(facadeId string, request *hijackC
 		})
 	} else {
 		notFound(id, c)
-		logger.Warn("not found forward", map[string]interface{}{
+		logger.Warn("not found dispatchRemoteForward", map[string]interface{}{
 			"module":   "facade",
 			"method":   req.Method,
 			"accessId": id,
@@ -83,7 +82,7 @@ func handleConnection(c net.Conn, forward func(facadeId string, request *hijackC
 	}
 }
 
-func facadeServe(ctx context.Context, addr string, forward func(facadeId string, request *hijackConn) bool) {
+func facadeServe(ctx context.Context, addr string, forward func(facadeId string, request *hijackHttp) bool) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		logger.Fatal("start Listen", err, map[string]interface{}{

@@ -2,31 +2,21 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/echogy-io/echogy"
+	"github.com/echogy-io/echogy/pkg/logger"
+	"github.com/echogy-io/echogy/pkg/pprof"
 	"github.com/rs/zerolog"
-	"github.com/youkale/echogy"
-	"github.com/youkale/echogy/logger"
-	"github.com/youkale/echogy/pprof"
 )
 
 var _conf = flag.String("c", "config.json", "config file, format json")
 var _pidFile = flag.String("pid", "", "pid file path (default: executable directory)")
-
-type Config struct {
-	LogLevel    string `json:"logLevel"`
-	LogFile     string `json:"logFile"` // Path to log file
-	EnablePProf bool   `json:"pprof"`
-	HttpAddr    string `json:"httpAddr"`
-	SSHAddr     string `json:"SSHAddr"`
-	Domain      string `json:"domain"`
-	PrivateKey  string `json:"privateKey"`
-}
 
 func logLevel(level string) zerolog.Level {
 	switch level {
@@ -83,11 +73,12 @@ func main() {
 	if nil != err {
 		panic(err)
 	}
-	config := &Config{}
-	err = json.Unmarshal(f, config)
-	if nil != err {
-		panic(err)
-	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	valueContext := echogy.WithConfig(ctx, f)
+
+	config := echogy.ContextConfig(valueContext)
 
 	logger.SetLogLevel(logLevel(config.LogLevel))
 
@@ -99,8 +90,6 @@ func main() {
 		logger.Info("Log file output enabled", logger.Fields{"path": config.LogFile})
 	}
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
 
@@ -111,9 +100,10 @@ func main() {
 	}
 
 	go func() {
-		echogy.Serve(ctx, config.SSHAddr, config.HttpAddr, config.Domain, []byte(config.PrivateKey))
+		echogy.Serve(valueContext)
 	}()
 	<-c
-	logger.Warn("echogy will be shutdown", map[string]interface{}{})
+	logger.WarnN("Echogy will be shutdown")
 	cancelFunc()
+	time.Sleep(1 * time.Second)
 }
