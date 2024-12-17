@@ -123,9 +123,23 @@ func log(level zerolog.Level, msg string, err error, fields Fields) {
 	event.Msg(msg)
 }
 
+func logN(level zerolog.Level, msg string, err error) {
+	event := defaultLogger.WithLevel(level)
+
+	if err != nil {
+		event = event.Err(err)
+	}
+	event.Msg(msg)
+}
+
 // Debug logs a debug message
 func Debug(msg string, fields Fields) {
 	log(zerolog.DebugLevel, msg, nil, fields)
+}
+
+// DebugN logs a debug message
+func DebugN(msg string) {
+	logN(zerolog.DebugLevel, msg, nil)
 }
 
 // Info logs an info message
@@ -133,9 +147,19 @@ func Info(msg string, fields Fields) {
 	log(zerolog.InfoLevel, msg, nil, fields)
 }
 
+// InfoN logs an info message
+func InfoN(msg string) {
+	logN(zerolog.InfoLevel, msg, nil)
+}
+
 // Warn logs a warning message
 func Warn(msg string, fields Fields) {
 	log(zerolog.WarnLevel, msg, nil, fields)
+}
+
+// WarnN logs a warning message
+func WarnN(msg string) {
+	logN(zerolog.WarnLevel, msg, nil)
 }
 
 // Error logs an error message
@@ -143,9 +167,20 @@ func Error(msg string, err error, fields Fields) {
 	log(zerolog.ErrorLevel, msg, err, fields)
 }
 
+// ErrorN logs an error message
+func ErrorN(msg string, err error) {
+	logN(zerolog.ErrorLevel, msg, err)
+}
+
 // Fatal logs a fatal message and exits
 func Fatal(msg string, err error, fields Fields) {
 	log(zerolog.FatalLevel, msg, err, fields)
+	os.Exit(1)
+}
+
+// FatalN logs a fatal message and exits
+func FatalN(msg string, err error) {
+	logN(zerolog.FatalLevel, msg, err)
 	os.Exit(1)
 }
 

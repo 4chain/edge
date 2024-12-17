@@ -1,7 +1,7 @@
 package pprof
 
 import (
-	"github.com/youkale/echogy/logger"
+	"github.com/echogy-io/echogy/pkg/logger"
 	"net/http"
 	_ "net/http/pprof"
 )

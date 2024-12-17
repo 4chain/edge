@@ -3,3 +3,5 @@
 release
 config.json
 dist
+debugger/node_modules
+debugger/package-lock.json

@@ -2,19 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"github.com/skip2/go-qrcode"
 	"mime"
-	"strconv"
 	"strings"
 	"time"
 )
-
-// orStr returns string b if string a is empty, otherwise returns a
-func orStr(a, b string) string {
-	if a == "" {
-		return b
-	}
-	return a
-}
 
 const (
 	_  = 1 << (10 * iota) // ignore first value by assigning to blank identifier
@@ -38,16 +30,6 @@ func humanBytes(i int64) string {
 	default:
 		return fmt.Sprintf("%.1fT", bytes/TB)
 	}
-}
-
-// humanSize converts a string containing bytes size to human readable format
-// Returns empty string if input is invalid
-func humanSize(size string) string {
-	atoi, err := strconv.ParseInt(size, 10, 64)
-	if err != nil {
-		return ""
-	}
-	return humanBytes(atoi)
 }
 
 // HumanMillis converts milliseconds to a human-readable duration string
@@ -101,4 +83,13 @@ func parseContentType(contentType string) string {
 		}
 		return mediatype
 	}
+}
+
+// generateQRCode creates an ASCII QR code for the given URL
+func generateQRCode(url string) string {
+	qr, err := qrcode.New("https://"+url, qrcode.Low)
+	if err != nil {
+		return ""
+	}
+	return qr.ToSmallString(true)
 }

@@ -2,8 +2,11 @@ package echogy
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"github.com/karlseguin/ccache/v3"
+	gossh "golang.org/x/crypto/ssh"
 	"net"
 	"strconv"
 	"time"
@@ -54,13 +57,13 @@ var cache = ccache.New(ccache.Configure[string]().MaxSize(1_000_000))
 
 func withIPGenerateAccessId(ip net.IP) (string, error) {
 	cacheKey := ip.String()
-	fetch, err := cache.Fetch(cacheKey, time.Hour*12, func() (string, error) {
-		return generateRandomString(8, AlphaNum)
+	fetch, err := cache.Fetch(cacheKey, time.Hour*2, func() (string, error) {
+		return generateRandomString(12, AlphaNum)
 	})
 	if nil != fetch && nil == err {
 		return fetch.Value(), nil
 	} else {
-		return generateRandomString(8, AlphaNum)
+		return generateRandomString(12, AlphaNum)
 	}
 }
 
@@ -91,4 +94,9 @@ func parseHostAddr(addr string) (string, uint32, error) {
 		return "", 0, err
 	}
 	return host, uint32(port), nil
+}
+
+func fingerprintSHA256(key gossh.PublicKey) string {
+	hash := sha256.Sum256(key.Marshal())
+	return hex.EncodeToString(hash[:])
 }

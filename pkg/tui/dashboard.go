@@ -2,33 +2,44 @@ package tui
 
 import (
 	"fmt"
+	"github.com/echogy-io/echogy/pkg/stat"
 	"strconv"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/skip2/go-qrcode"
-	q "github.com/youkale/echogy/pkg/queue"
+	q "github.com/echogy-io/echogy/pkg/queue"
 )
 
 // Constants for layout and styling
 const (
 	defaultTableHeight = 10
-	maxRequestHistory  = 32
+	minHeaderWidth     = 80
 )
 
 // Style definitions
 var (
 	dashStyle = lipgloss.NewStyle().Padding(1)
 
-	headerStyle = lipgloss.NewStyle().Bold(true).Border(lipgloss.NormalBorder(), false, false, true, false).PaddingBottom(1)
+	headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			BorderBottom(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.AdaptiveColor{Light: "#94A3B8", Dark: "#4A5568"})
 
-	urlStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#3182CE", Dark: "#90CDF4"})
+	urlStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.AdaptiveColor{Light: "#2563EB", Dark: "#60A5FA"}).
+			Width(45).
+			Align(lipgloss.Left)
 
-	statsStyle = lipgloss.NewStyle().PaddingLeft(1).PaddingRight(1).Foreground(lipgloss.AdaptiveColor{Light: "#4A5568", Dark: "#A0AEC0"})
+	statsStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.AdaptiveColor{Light: "#475569", Dark: "#94A3B8"}).
+			Width(12).
+			Align(lipgloss.Right)
 
-	// Column styles
 	colMethodHeaderStyle = lipgloss.NewStyle().Align(lipgloss.Center).Bold(true)
 
 	colNoStyle = lipgloss.NewStyle().Align(lipgloss.Left)
@@ -41,22 +52,29 @@ var (
 
 	colUseTimeHeaderStyle = lipgloss.NewStyle().Align(lipgloss.Right)
 
-	colUseTimeStyle = lipgloss.NewStyle().Inherit(colUseTimeHeaderStyle).Foreground(lipgloss.AdaptiveColor{Light: "#4A5568", Dark: "#A0AEC0"})
+	colUseTimeStyle = lipgloss.NewStyle().
+			Inherit(colUseTimeHeaderStyle).
+			Bold(false).
+			Foreground(lipgloss.AdaptiveColor{Light: "#475569", Dark: "#94A3B8"})
 
-	// QR code styles
-	qrStyle = lipgloss.NewStyle().Align(lipgloss.Center).Foreground(lipgloss.AdaptiveColor{Light: "#1A1A1A", Dark: "#F1F1F1"})
+	qrStyle = lipgloss.NewStyle().
+		Align(lipgloss.Top).
+		Foreground(lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#F8FAFC"}).
+		Padding(1)
 
-	githubStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#3182CE", Dark: "#90CDF4"}).Bold(true)
+	githubStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.AdaptiveColor{Light: "#2563EB", Dark: "#60A5FA"})
 
-	descStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#4A5568", Dark: "#A0AEC0"}).PaddingTop(1)
+	descStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#334155", Dark: "#E2E8F0"}).
+			PaddingTop(1)
 
-	// Table styles
 	tableStyle = table.Styles{
-		Header: lipgloss.NewStyle().
-			Bold(true),
+		Header: lipgloss.NewStyle().Bold(true),
 		Selected: lipgloss.NewStyle().
-			Background(lipgloss.AdaptiveColor{Light: "#EDF2F7", Dark: "#2D3748"}).
-			Foreground(lipgloss.AdaptiveColor{Light: "#3182CE", Dark: "#90CDF4"}).
+			Background(lipgloss.AdaptiveColor{Light: "#EDF2F7", Dark: "#1E293B"}).
+			Foreground(lipgloss.AdaptiveColor{Light: "#2563EB", Dark: "#60A5FA"}).
 			Bold(true),
 		Cell: lipgloss.NewStyle(),
 	}
@@ -92,7 +110,7 @@ func newRequestTable(width int) *RequestTable {
 		{Title: colNoStyle.Render("#"), Weight: 0.05},                 // 5% of available width
 		{Title: colMethodHeaderStyle.Render("Method"), Weight: 0.1},   // 10% of available width
 		{Title: colStatusStyle.Render("Status"), Weight: 0.1},         // 10% of available width
-		{Title: colPathHeaderStyle.Render("Path"), Weight: 0.65},      // 65% of available width
+		{Title: colPathHeaderStyle.Render("URI"), Weight: 0.65},       // 65% of available width
 		{Title: colUseTimeHeaderStyle.Render("UseTime"), Weight: 0.1}, // 10% of available width
 	}
 
@@ -122,9 +140,9 @@ func newRequestTable(width int) *RequestTable {
 type Dashboard struct {
 	width      int
 	height     int
-	quitFunc   func()
 	tunnelInfo TunnelInfo
 	table      *RequestTable
+	stat       *stat.Stat
 	requests   *q.FixedQueue
 }
 
@@ -139,9 +157,8 @@ type TunnelInfo struct {
 }
 
 // newDashboard creates a new dashboard instance
-func newDashboard(tunnelAddr string, width, height int, quitFunc func()) *Dashboard {
+func newDashboard(queue *q.FixedQueue, stat *stat.Stat, tunnelAddr string, width, height int) *Dashboard {
 	return &Dashboard{
-		quitFunc: quitFunc,
 		tunnelInfo: TunnelInfo{
 			URL:       tunnelAddr,
 			ExpiresIn: 10 * time.Minute,
@@ -149,7 +166,8 @@ func newDashboard(tunnelAddr string, width, height int, quitFunc func()) *Dashbo
 		width:    width,
 		height:   height,
 		table:    newRequestTable(width),
-		requests: q.NewFixedQueue(maxRequestHistory),
+		stat:     stat,
+		requests: queue,
 	}
 }
 
@@ -190,9 +208,7 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
-			tea.Quit()
-			d.quitFunc()
-			return d, nil
+			return d, tea.Quit
 		}
 	case tea.WindowSizeMsg:
 		d.width = msg.Width
@@ -200,6 +216,8 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		d.table.SetHeight(msg.Height - 8)
 		d.updateTableWidth()
 	}
+
+	d.preUpdate()
 
 	// Always update the table model
 	var m table.Model
@@ -211,41 +229,95 @@ func (d *Dashboard) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // renderHeader renders the header section with URLs and stats
 func (d *Dashboard) renderHeader() string {
 	// URLs section
-	leftURLS := lipgloss.JoinVertical(
-		lipgloss.Left,
-		lipgloss.NewStyle().Inherit(urlStyle).Width(d.width/2).Render(fmt.Sprintf("HTTP:  http://%s", d.tunnelInfo.URL)),
-		lipgloss.NewStyle().Inherit(urlStyle).Width(d.width/2).Render(fmt.Sprintf("HTTPS: https://%s", d.tunnelInfo.URL)),
-	)
+	urls := []string{
+		fmt.Sprintf("HTTP:  %s", d.tunnelInfo.URL),
+		fmt.Sprintf("HTTPS: %s", d.tunnelInfo.URL),
+	}
 
 	// Stats section
-	leftStats := lipgloss.JoinVertical(
+	stats := []string{
+		fmt.Sprintf("↓ %s", humanBytes(d.tunnelInfo.BytesRecv)),
+		fmt.Sprintf("↑ %s", humanBytes(d.tunnelInfo.BytesSent)),
+	}
+
+	counts := []string{
+		fmt.Sprintf("Req: %d", d.tunnelInfo.ReqCount),
+		fmt.Sprintf("Res: %d", d.tunnelInfo.ResCount),
+	}
+
+	if d.width < minHeaderWidth {
+		// 小屏幕：垂直布局
+		leftURLS := lipgloss.JoinVertical(
+			lipgloss.Left,
+			urlStyle.Render(urls[0]),
+			urlStyle.Render(urls[1]),
+		)
+
+		statsInfo := lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			statsStyle.Render(stats[0]),
+			statsStyle.Render(counts[0]),
+		)
+
+		countInfo := lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			statsStyle.Render(stats[1]),
+			statsStyle.Render(counts[1]),
+		)
+
+		return lipgloss.NewStyle().Inherit(headerStyle).Width(d.width - 2).Render(
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				leftURLS,
+				"\n",
+				statsInfo,
+				countInfo,
+			),
+		)
+	}
+
+	// 大屏幕：水平布局
+	leftURLS := lipgloss.JoinVertical(
 		lipgloss.Left,
-		lipgloss.NewStyle().Inherit(statsStyle).Width(d.width/4).Render(fmt.Sprintf("↓ %s", humanBytes(d.tunnelInfo.BytesRecv))),
-		lipgloss.NewStyle().Inherit(statsStyle).Width(d.width/4).Render(fmt.Sprintf("↑ %s", humanBytes(d.tunnelInfo.BytesSent))),
+		urlStyle.Render(urls[0]),
+		urlStyle.Render(urls[1]),
 	)
 
-	srCount := lipgloss.JoinVertical(
-		lipgloss.Left,
-		lipgloss.NewStyle().Inherit(statsStyle).Width(d.width/4).Align(lipgloss.Center).Render(fmt.Sprintf("ReqCount: %d", d.tunnelInfo.ReqCount)),
-		lipgloss.NewStyle().Inherit(statsStyle).Width(d.width/4).Align(lipgloss.Center).Render(fmt.Sprintf("ResCount: %d", d.tunnelInfo.ResCount)),
+	rightStats := lipgloss.JoinVertical(
+		lipgloss.Right,
+		lipgloss.JoinHorizontal(
+			lipgloss.Right,
+			statsStyle.Render(stats[0]),
+			statsStyle.Render(counts[0]),
+		),
+		lipgloss.JoinHorizontal(
+			lipgloss.Right,
+			statsStyle.Render(stats[1]),
+			statsStyle.Render(counts[1]),
+		),
 	)
 
-	rightStats := lipgloss.JoinHorizontal(lipgloss.Top, leftStats, srCount)
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftURLS, rightStats)
+	return lipgloss.NewStyle().Inherit(headerStyle).Width(d.width - 2).Render(
+		lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			leftURLS,
+			rightStats,
+		),
+	)
 }
 
 // renderProjectInfo renders the project information section
 func (d *Dashboard) renderProjectInfo() string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		githubStyle.Render("GitHub: https://github.com/youkale/echogy"),
+		githubStyle.Render("Service: https://echogy.io"),
 		descStyle.Render("Echogy - A lightweight and efficient SSH reverse proxy tool\n\n"+
 			"Features:\n"+
 			"• Easy to use HTTP/HTTPS tunnel\n"+
 			"• Real-time traffic monitoring\n"+
 			"• Beautiful TUI interface\n"+
 			"• Cross-platform support\n\n"+
-			"Scan QR code to access your tunnel →"),
+			"⭠ Scan QR code to access your tunnel"),
 	)
 }
 
@@ -257,28 +329,27 @@ func (d *Dashboard) View() string {
 	if d.requests.Len() == 0 {
 		// Show QR code and project info when table is empty
 		qrCode := generateQRCode(d.tunnelInfo.URL)
-		content = lipgloss.JoinHorizontal(
-			lipgloss.Center,
-			lipgloss.NewStyle().PaddingRight(4).Render(d.renderProjectInfo()),
-			qrStyle.Render(qrCode),
-		)
+		if d.width > minHeaderWidth {
+			content = lipgloss.JoinHorizontal(
+				lipgloss.Center,
+				qrStyle.Render(qrCode),
+				lipgloss.NewStyle().PaddingRight(4).Render(d.renderProjectInfo()),
+			)
+		} else {
+			content = lipgloss.JoinHorizontal(
+				lipgloss.Center,
+				qrStyle.Render(qrCode),
+			)
+		}
 	} else {
 		content = d.table.View()
 	}
 
 	return dashStyle.Render(
 		lipgloss.JoinVertical(lipgloss.Left,
-			headerStyle.Render(head),
+			head,
 			content),
 	)
-}
-
-func getBytes(s string) int64 {
-	atoi, err := strconv.ParseInt(s, 10, 64)
-	if nil != err {
-		return 0
-	}
-	return atoi
 }
 
 func renderStatusCode(status int) string {
@@ -316,29 +387,26 @@ func renderMethod(method string) string {
 	}
 }
 
-// AddRequest adds a new request to the dashboard
-func (d *Dashboard) AddRequest(req *httpExchange) {
+func (d *Dashboard) preUpdate() {
+	d.tunnelInfo.BytesRecv = d.stat.Receive
+	d.tunnelInfo.BytesSent = d.stat.Send
 
-	reqByte := getBytes(req.Request.Header.Get("Content-Length"))
-	respByte := getBytes(req.Response.Header.Get("Content-Length"))
+	d.tunnelInfo.ReqCount = d.stat.Request
+	d.tunnelInfo.ResCount = d.stat.Response
 
-	d.tunnelInfo.BytesRecv += reqByte
-	d.tunnelInfo.BytesSent += respByte
+	l := min(d.requests.Len(), 32)
 
-	d.tunnelInfo.ReqCount += 1
-	d.tunnelInfo.ResCount += 1
+	items := d.requests.ReversedItems()
 
-	d.requests.Push(req)
-
-	rows := make([]table.Row, d.requests.Len())
+	rows := make([]table.Row, l)
 	// Update table rows
-	for i, item := range d.requests.Items() {
-		r := item.(*httpExchange)
+	for i := 0; i < l; i++ {
+		r := items[i].(*stat.RequestEntity)
 		path := colPathStyle.Render(r.RequestURI)
-		t := colUseTimeStyle.Render(humanMillis(r.useTime))
+		t := colUseTimeStyle.Render(humanMillis(r.UseTime))
 
 		rows[i] = table.Row{
-			colNoStyle.Render(strconv.Itoa(i + 1)),
+			colNoStyle.Render(strconv.Itoa(l - i)),
 			renderMethod(r.Method),
 			renderStatusCode(r.StatusCode),
 			path,
@@ -351,13 +419,4 @@ func (d *Dashboard) AddRequest(req *httpExchange) {
 // UpdateStats updates the tunnel information statistics
 func (d *Dashboard) UpdateStats(info TunnelInfo) {
 	d.tunnelInfo = info
-}
-
-// generateQRCode creates an ASCII QR code for the given URL
-func generateQRCode(url string) string {
-	qr, err := qrcode.New("https://"+url, qrcode.Low)
-	if err != nil {
-		return ""
-	}
-	return qr.ToString(true)
 }

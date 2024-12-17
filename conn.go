@@ -2,7 +2,6 @@ package echogy
 
 import (
 	"fmt"
-	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 	"io"
 	"net"
@@ -108,12 +107,12 @@ func (b *bufferedReader) Position() int {
 }
 
 type wrappedConn struct {
-	session ssh.Session
+	conn *gossh.ServerConn
 	gossh.Channel
 }
 
-func wrapChannelConn(session ssh.Session, channel gossh.Channel) *wrappedConn {
-	return &wrappedConn{session: session, Channel: channel}
+func wrapChannelConn(conn *gossh.ServerConn, channel gossh.Channel) *wrappedConn {
+	return &wrappedConn{conn: conn, Channel: channel}
 }
 
 func (w *wrappedConn) bufferedReader() *bufferedReader {
@@ -121,11 +120,11 @@ func (w *wrappedConn) bufferedReader() *bufferedReader {
 }
 
 func (w *wrappedConn) LocalAddr() net.Addr {
-	return w.session.LocalAddr()
+	return w.conn.LocalAddr()
 }
 
 func (w *wrappedConn) RemoteAddr() net.Addr {
-	return w.session.RemoteAddr()
+	return w.conn.RemoteAddr()
 }
 
 func (w *wrappedConn) SetDeadline(t time.Time) error {
