@@ -24,15 +24,14 @@ type PasswordAuth struct {
 }
 
 type DefaultAuth struct {
-	PubKeys     []*PubKeyAuth   `json:"pubKeys"`
-	Passwords   []*PasswordAuth `json:"passwords"`
 	pubKeyMap   map[string]string
 	passwordMap map[string]string
 }
 
-func Update(a *DefaultAuth) *DefaultAuth {
+func New(keys []*PubKeyAuth, pwd []*PasswordAuth) *DefaultAuth {
+	a := &DefaultAuth{}
 	a.pubKeyMap = make(map[string]string)
-	for _, item := range a.PubKeys {
+	for _, item := range keys {
 		out, _, _, _, err := gossh.ParseAuthorizedKey([]byte(item.PubKey))
 		if nil != err {
 			continue
@@ -43,7 +42,7 @@ func Update(a *DefaultAuth) *DefaultAuth {
 	}
 
 	a.passwordMap = make(map[string]string)
-	for _, item := range a.Passwords {
+	for _, item := range pwd {
 		a.passwordMap[fmt.Sprintf("%s:%s", item.Username, item.Password)] = item.Alias
 	}
 	return a

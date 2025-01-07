@@ -192,9 +192,7 @@ func sessionHandler(domain string) func(ssh.Session) {
 	}
 }
 
-func Serve(ctx context.Context, auth auth.Auth) {
-
-	config := ContextConfig(ctx)
+func Serve(ctx context.Context, config *Config, auth auth.Auth) {
 
 	wg := sync.WaitGroup{}
 
