@@ -18,7 +18,8 @@ export function useEventSource(url: string, handlers: EventHandlers) {
             setConnected(true);
         };
 
-        eventSource.onerror = () => {
+        eventSource.onerror = (err) => {
+            console.error(err)
             setConnected(false);
         };
 

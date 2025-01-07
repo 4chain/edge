@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/echogy-io/echogy/pkg/auth"
 	"os"
 	"os/signal"
 	"syscall"
@@ -45,6 +47,19 @@ func setOSEnv() {
 	os.Setenv("TERM_PROGRAM", "xterm")
 }
 
+type AuthConfig struct {
+	PubKeys   []*auth.PubKeyAuth   `json:"pubKeys"`
+	Passwords []*auth.PasswordAuth `json:"passwords"`
+}
+
+type SysConfig struct {
+	LogLevel    string `json:"logLevel"`
+	LogFile     string `json:"logFile"` // Path to log file
+	EnablePProf bool   `json:"pprof"`
+	*echogy.Config
+	Auth *AuthConfig `json:"auth"`
+}
+
 func main() {
 
 	flag.Parse()
@@ -76,31 +91,37 @@ func main() {
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
-	valueContext := echogy.WithConfig(ctx, f)
+	var sysConfig SysConfig
 
-	config := echogy.ContextConfig(valueContext)
+	err = json.Unmarshal(f, &sysConfig)
 
-	logger.SetLogLevel(logLevel(config.LogLevel))
+	if nil != err {
+		panic(fmt.Sprintf("Failed to setup log file: %v", err))
+	}
+
+	logger.SetLogLevel(logLevel(sysConfig.LogLevel))
 
 	// Setup log file output if configured
-	if config.LogFile != "" {
-		if err := logger.AddFileOutput(config.LogFile); err != nil {
+	if sysConfig.LogFile != "" {
+		if err := logger.AddFileOutput(sysConfig.LogFile); err != nil {
 			panic(fmt.Sprintf("Failed to setup log file: %v", err))
 		}
-		logger.Info("Log file output enabled", logger.Fields{"path": config.LogFile})
+		logger.Info("Log file output enabled", logger.Fields{"path": sysConfig.LogFile})
 	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
 
-	if config.EnablePProf {
+	if sysConfig.EnablePProf {
 		go func() {
 			pprof.Serve()
 		}()
 	}
 
+	_auth := auth.New(sysConfig.Auth.PubKeys, sysConfig.Auth.Passwords)
+
 	go func() {
-		echogy.Serve(valueContext)
+		echogy.Serve(ctx, sysConfig.Config, _auth)
 	}()
 	<-c
 	logger.WarnN("Echogy will be shutdown")

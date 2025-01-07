@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 )
 
 type fakeListen struct {
@@ -39,7 +40,7 @@ func (f *fakeListen) Addr() net.Addr {
 
 func newListen(conn *gossh.ServerConn) *fakeListen {
 	return &fakeListen{
-		chs:        make(chan gossh.Channel, 2),
+		chs:        make(chan gossh.Channel),
 		serverConn: conn,
 	}
 }
@@ -106,17 +107,16 @@ type UpdateEventMessage struct {
 	HttpEntity *WrapHttpEntity `json:"httpEntity"`
 }
 
-func writeEvent(w http.ResponseWriter, msg *EventMessage) error {
-	if fl, ok := w.(http.Flusher); ok {
-		data, err := json.Marshal(msg)
-		if err != nil {
-			return err
-		}
-		w.Write([]byte("event: sync\n"))
-		fmt.Fprintf(w, "data: %s\n\n", data)
-		fl.Flush()
+func writeEvent(w http.ResponseWriter, rc *http.ResponseController, msg *EventMessage) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
 	}
-	return nil
+	_, err = fmt.Fprintf(w, "id: %d\nevent: sync\ndata: %s\n\n", time.Now().Unix(), data)
+	if nil != err {
+		return err
+	}
+	return rc.Flush()
 }
 
 func (f *debugServer) getStat() *Stats {
@@ -159,7 +159,9 @@ func (f *debugServer) eventHandler(w http.ResponseWriter, r *http.Request) {
 		sem.HttpEntities = append(sem.HttpEntities, entity)
 	}
 
-	err := writeEvent(w, &EventMessage{
+	rc := http.NewResponseController(w)
+
+	err := writeEvent(w, rc, &EventMessage{
 		Name: "all",
 		Data: sem,
 	})
@@ -177,8 +179,9 @@ func (f *debugServer) eventHandler(w http.ResponseWriter, r *http.Request) {
 		case <-f.ctx.Done():
 			return
 		case msg := <-f.chEvent:
-			if nil != msg {
-				err := writeEvent(w, msg)
+			logger.DebugN("update debug message")
+			err = writeEvent(w, rc, msg)
+			if nil != err {
 				logger.Error(fmt.Sprintf("send event [%s] error", msg.Name), err, map[string]interface{}{
 					"server": "debug",
 				})
@@ -223,7 +226,7 @@ func simpleResponse(w *http.Response) *Response {
 }
 
 func (f *debugServer) UpdateEvent(w *http.Response, r *http.Request, t int64) {
-	m := &EventMessage{
+	f.chEvent <- &EventMessage{
 		Name: "update",
 		Data: &UpdateEventMessage{
 			Stats: f.getStat(),
@@ -234,7 +237,6 @@ func (f *debugServer) UpdateEvent(w *http.Response, r *http.Request, t int64) {
 			},
 		},
 	}
-	f.chEvent <- m
 }
 
 func getOrCreateDebugServer(conn *gossh.ServerConn, ctx ssh.Context) *debugServer {
@@ -245,7 +247,7 @@ func getOrCreateDebugServer(conn *gossh.ServerConn, ctx ssh.Context) *debugServe
 		svr = &debugServer{
 			fake:    ln,
 			ctx:     ctx,
-			chEvent: make(chan *EventMessage, 2),
+			chEvent: make(chan *EventMessage),
 		}
 
 		wg := sync.WaitGroup{}
