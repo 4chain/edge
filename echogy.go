@@ -239,8 +239,8 @@ func Serve(ctx context.Context, config *Config, auth auth.Auth) {
 		})
 	}()
 	wg.Wait()
-	server.Shutdown(ctx)
 	<-ctx.Done()
+	server.Shutdown(ctx)
 	sessionHub.Range(func(key, value interface{}) bool {
 		fwd := value.(*forwarder)
 		fwd.Close()
